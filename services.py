@@ -12,6 +12,7 @@ For example:
     cache.local and other machines on the same subnet can address it that way.
 """
 
+import argparse
 import os
 import re
 import boto
@@ -157,7 +158,7 @@ def dns(zone_id, zone_name, service_name, service_ip, ttl=20):
     return rrs
 
 
-def update_services(service_names=[]):
+def update_services(service_names=[], verbose=False):
     """Update DNS to allow discovery of properly named task definitions.
 
     If service_names are provided only update those services.
@@ -169,6 +170,8 @@ def update_services(service_names=[]):
                 service['family'] not in service_names and
                 service['name'] not in service_names):
             continue
+        if verbose:
+            print "registering {0}".format(service['name'])
         dns(info['network']['zone_id'], info['network']['zone_name'],
             service['name'], service['container_instance_internal_ip'])
 
@@ -176,7 +179,7 @@ def cli():
     parser = argparse.ArgumentParser()
     parser.add_argument('service_names', nargs='*',
                         help='list of services to start')
-    update_services(parser.parse_args().service_names)
+    update_services(parser.parse_args().service_names, True)
 
 pattern_arn = re.compile(
     'arn:'

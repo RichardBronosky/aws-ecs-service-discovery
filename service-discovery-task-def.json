@@ -1,0 +1,27 @@
+{
+    "family": "service-discovery",
+    "volumes": [
+        {
+            "name": "ecs",
+            "host": {"sourcePath": "/etc/ecs"}
+        }
+    ],
+    "containerDefinitions": [
+        {
+            "environment": [],
+            "name": "service-discovery",
+            "image": "richardbronosky/aws-ecs-service-discovery",
+            "cpu": 2,
+            "memory": 45,
+            "entryPoint": ["awsesd"],
+            "mountPoints": [
+                {
+                    "sourceVolume": "ecs",
+                    "containerPath": "/etc/ecs",
+                    "readOnly": true
+                }
+            ],
+            "essential": false
+        }
+    ]
+}

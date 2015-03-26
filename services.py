@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 A toolkit for identifying and advertising service resources.
 
@@ -13,6 +14,7 @@ For example:
 """
 
 import argparse
+import logging
 import os
 import re
 import boto
@@ -20,6 +22,10 @@ import boto
 ecs = boto.connect_ec2containerservice()
 ec2 = boto.connect_ec2()
 route53 = boto.connect_route53()
+
+logging.basicConfig(format='%(asctime)s %(message)s',
+                    datefmt='%Y/%m/%d/ %I:%M:%S %p')
+log = logging.info
 
 if 'ECS_CLUSTER' in os.environ:
     cluster = os.environ['ECS_CLUSTER']
@@ -83,7 +89,7 @@ def get_task_container_instance_arn(task_arn):
     return response['DescribeTasksResult']['tasks'][0]['containerInstanceArn']
 
 
-def get_container_instance_ec2_instance_id(container_instance_arn):
+def get_container_instance_ec2_id(container_instance_arn):
     """Id the EC2 instance serving as the container instance."""
     detail = ecs.describe_container_instances(
         container_instances=container_instance_arn, cluster=cluster)
@@ -120,33 +126,37 @@ def get_zone_for_vpc(vpc_id):
 
 
 def get_info():
-    """Get all needed info about running services."""
-    info = {'services': [], 'network': {'cluster': cluster}}
-    families = get_task_definition_families()
-    for family in families:
-        service_dict = {}
+    """Get all needed info about running services.
+
+    WARNING: locals() is used to assemble the returned dictionary. Any
+    variables defined in this function must begine with _ to be kept out of the
+    return value.
+    """
+    _info = {'services': [], 'network': {'cluster': cluster}}
+    _families = get_task_definition_families()
+    for family in _families:
         if family[-8:] != '-service':
+            log('    (Found non-service {family})'.format(**locals()))
             continue
-        service_dict['service_arn'] = get_task_arn(family)
-        if not service_dict['service_arn']:
+        log('{family} service found'.format(**locals()))
+        service_arn = get_task_arn(family)
+        if not service_arn:
             # task is not running, skip it
+            log('{family} is not running'.format(**locals()))
             continue
-        service_dict['family'] = family
-        service_dict['name'] = family[:-8]
-        service_dict['container_instance_arn'] = (
-            get_task_container_instance_arn(service_dict['service_arn']))
-        service_dict['ec2_instance_id'] = (
-            get_container_instance_ec2_instance_id(
-                service_dict['container_instance_arn']))
-        ec2_interface = get_ec2_interface(service_dict['ec2_instance_id'])
-        service_dict['container_instance_internal_ip'] = (
-            ec2_interface.private_ip_address)
+        log('{family} is RUNNING'.format(**locals()))
+        name = family[:-8]
+        container_instance_arn = get_task_container_instance_arn(service_arn)
+        ec2_instance_id = get_container_instance_ec2_id(container_instance_arn)
+        ec2_interface = get_ec2_interface(ec2_instance_id)
+        container_instance_internal_ip = ec2_interface.private_ip_address
+        _services = {k: v for (k, v) in locals().iteritems() if k[0] != '_'}
+        _info['services'].append(_services)
         # No need to get common network info on each loop over tasks
-        if 'vpc_id' not in info['network']:
-            info['network']['vpc_id'] = ec2_interface.vpc_id
-            info['network'].update(get_zone_for_vpc(info['network']['vpc_id']))
-        info['services'].append(service_dict)
-    return info
+        if 'vpc_id' not in _info['network']:
+            _info['network'].update(get_zone_for_vpc(ec2_interface.vpc_id))
+            _info['network']['vpc_id'] = ec2_interface.vpc_id
+    return _info
 
 
 def dns(zone_id, zone_name, service_name, service_ip, ttl=20):
@@ -171,15 +181,24 @@ def update_services(service_names=[], verbose=False):
                 service['name'] not in service_names):
             continue
         if verbose:
-            print "registering {0}".format(service['name'])
+            log('Registering {0}.{1} as {2}'.format(
+                service['name'], info['network']['zone_name'],
+                service['container_instance_internal_ip']))
         dns(info['network']['zone_id'], info['network']['zone_name'],
             service['name'], service['container_instance_internal_ip'])
 
+
 def cli():
+    """Used by entry_point console_scripts."""
     parser = argparse.ArgumentParser()
     parser.add_argument('service_names', nargs='*',
                         help='list of services to start')
-    update_services(parser.parse_args().service_names, True)
+    parser.add_argument('-q', '--quiet', action='store_true',
+                        help='supress output')
+    args = parser.parse_args()
+    if not args.quiet:
+        logging.getLogger().setLevel(logging.INFO)
+    update_services(args.service_names, True)
 
 pattern_arn = re.compile(
     'arn:'
@@ -192,3 +211,6 @@ pattern_arn = re.compile(
         '(?P<family>[^:]+):'     # noqa
         '(?P<version>[^:]+)|.*'  # noqa
     '))')
+
+if __name__ == '__main__':
+    cli()

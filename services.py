@@ -25,7 +25,7 @@ if 'ECS_CLUSTER' in os.environ:
     cluster = os.environ['ECS_CLUSTER']
 elif os.path.exists('/etc/ecs/ecs.config'):
     pat = re.compile(r'\bECS_CLUSTER\b\s*=\s*(\w*)')
-    cluster = pat.findall(open('/ecs/ecs.config').read())[-1]
+    cluster = pat.findall(open('/etc/ecs/ecs.config').read())[-1]
 else:
     cluster = None
 

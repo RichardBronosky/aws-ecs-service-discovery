@@ -21,7 +21,7 @@
                     "readOnly": true
                 }
             ],
-            "essential": false
+            "essential": true
         }
     ]
 }
